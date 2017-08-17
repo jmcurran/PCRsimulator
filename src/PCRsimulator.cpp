@@ -5,6 +5,7 @@ using namespace Rcpp;
 #include <iostream>
 using namespace std;
 
+//' @export PCRSim
 class PCRSim {
 private:
   // Number of loci. The loci of alleles being used in the system
@@ -163,7 +164,7 @@ public:
     m_bStutter = bStutter;
   }
   // This is where the simulation happens
-  List Simulate(){
+  List simulate(){
     ostringstream Rout;
     Rout << "Simulation parameters" << endl;
     Rout << "Number of cells: " << m_nNumCells << endl;
@@ -222,5 +223,17 @@ public:
   //   return results;
   // }
 };
+
+
+// Expose the classes
+RCPP_MODULE(PCRSim) {
+  using namespace Rcpp;
+
+  class_<PCRSim>( "PCRSim")
+    .default_constructor("Default constructor") // This exposes the default constructor
+    .constructor<PCRSim>("Constructor with an argument") // This exposes the other constructor
+    .method("Simulate", &PCRSim::simulate) // This exposes the simulate method
+  ;
+}
 
 
