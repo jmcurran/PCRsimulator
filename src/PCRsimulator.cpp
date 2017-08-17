@@ -3,8 +3,6 @@ using namespace Rcpp;
 
 #include <string>
 #include <iostream>
-#include <fstream>
-
 using namespace std;
 
 class PCRSim {
@@ -13,34 +11,26 @@ private:
   int m_nNumLoci;
   // Number of cells to be analysed in this case
   int m_nNumCells;
-  // Number of PCR cycles
-  /* Number of PCR cycles. By default we use 28 cycles.*/
+  // Number of PCR cycles. By default we use 28 cycles.
   int m_nNumPCRCycles;
   // Number of simulations to run
-  /* Number of simulations to run*/
   int m_nNumSims;
-  // Efficiency of the extraction process
-  /* Efficiency of the extraction process. Constrained to be between zero and one */
+  // Efficiency of the extraction process. Constrained to be between zero and one.
   double m_dExtractionEfficiency;
-  // Efficiency of the PCR process
-  /* Efficiency of the PCR process. Constrained to be between zero and one.*/
+  // Efficiency of the PCR process. Constrained to be between zero and one.
   double m_dPCREfficiency;
-  // Proportion of an aliquot that contains m_nNumCells that is taken forward to PCR
-  /* Proportion of an aliquot that contains m_nNumCells that is taken forward to PCR.
-  Constrained to be between zero and one.*/
+  // Proportion of an aliquot that contains m_nNumCells that is taken forward to PCR.
+  // Constrained to be between zero and one.
   double m_dAliquot;
-  // Probability of an allele stuttering on a given PCR cycle
-  /* Probability of an allele stuttering on a given PCR cycle.*/
+  // Probability of an allele stuttering on a given PCR cycle.
   double m_dStutter;
-  // Is this a haploid case?
-  // Is this a haploid case? \a false by default
+  // Is this a haploid case? false by default.
   bool m_bHaploid;
-  // Are we employing a stutter model?
-  /* Are we employing a stutter model? \a false by default */
+  // Are we employing a stutter model? false by default.
   bool m_bStutter;
-  string m_strResFileName;
   double m_dAlpha;
   double m_dBeta;
+
 private:
   NumericVector rbinom(const int n, const double size, const double p){
     NumericVector r;
@@ -62,76 +52,81 @@ private:
     return r;
   }
 
-  // Calculates the heterozygous balance and the proportion of dropout events
-  double CalculateHb(NumericVector& vAlleleCount, double *pHb){
-    int nLoc;
-    int nA, nB;
-    double dA,dB;
-    int nDropout = 0;
+  NumericVector rbinom(const NumericVector& size, const NumericVector& p){
+    NumericVector r;
+    NumericVector::const_iterator n = size.begin();
+    NumericVector::const_iterator pn = p.begin();
 
-    for(nLoc=0;nLoc<m_nNumLoci;nLoc++)
-    {
-      nA = pAlleleCount[nLoc][0];
-      nB = pAlleleCount[nLoc][1];
-
-      if(nA==0||nB==0) // dropout
-      {
-        pHb[nLoc]=0;
-        nDropout++;
-      }
-      else
-      {
-        dA = (double)nA;
-        dB = (double)nB;
-
-        if(dA>dB)
-          pHb[nLoc] = dB/dA;
-        else
-          pHb[nLoc] = dA/dB;
-      }
+    while(n != size.end() && pn != p.end()){
+      r.push_back(::Rf_rbinom(*n, *pn));
+      n++;
+      pn++;
     }
 
-    return (double)nDropout/(double)(2*m_nNumLoci);
+    return r;
   }
-  // Simulates the extraction processes
-  /* Simulations the extraction process.
-  \param vAlleleCount */
+
+  // // Calculates the heterozygous balance and the proportion of dropout events
+  // double CalculateHb(NumericVector& alleleCount, NumericVector& Hb){
+  //   int nLoc;
+  //   int nA, nB;
+  //   double dA,dB;
+  //   int nDropout = 0;
+  //
+  //   for(nLoc=0;nLoc<m_nNumLoci;nLoc++)
+  //   {
+  //     nA = alleleCount[2 * nLoc];
+  //     nB = alleleCount[2 * nLoc + 1];
+  //
+  //     if(nA==0||nB==0) // dropout
+  //     {
+  //       Hb[nLoc]=0;
+  //       nDropout++;
+  //     }
+  //     else
+  //     {
+  //       dA = (double)nA;
+  //       dB = (double)nB;
+  //
+  //       if(dA>dB)
+  //         Hb[nLoc] = dB/dA;
+  //       else
+  //         Hb[nLoc] = dA/dB;
+  //     }
+  //   }
+  //
+  //   return (double)nDropout/(double)(2*m_nNumLoci);
+  // }
+  // Simulates the extraction processes.
   NumericVector Extract(void){
     NumericVector survived = rbinom(2 * m_nNumLoci, m_nNumCells, m_dExtractionEfficiency);
     return rbinom(survived, m_dAliquot);
   }
 
   void PCR(NumericVector& alleleCount, NumericVector& stutterAlleleCount){
+    stutterAlleleCount = NumericVector::create(2 * m_nNumLoci, 0);
 
-    if(m_dPCREfficiency < 1){
-      int nLoc;
-      int nCycle;
+    for(int nCycle = 0; nCycle < m_nNumPCRCycles; nCycle++){
+      alleleCount += rbinom(alleleCount, m_dPCREfficiency);
 
-      if(m_bStutter){
-        stutterAlleleCount = NumericVector(2 * m_nNumLoci, 0);
+      if(m_bStutter){ // only do this if we're using a stutter model
+        /* by PCRing stutter product first ensures that PCR only happens on product
+        previous PCR cycle */
+        stutterAlleleCount += rbinom(stutterAlleleCount, m_dPCREfficiency);
+
+        NumericVector probStutter = rbeta(2 * m_nNumLoci, m_dAlpha, m_dBeta);
+        stutterAlleleCount += rbinom(alleleCount, probStutter);
       }
-
-      for(nCycle = 0; nCycle < m_nNumPCRCycles; nCycle++)
-        alleleCount += rbinom(alleleCount, m_dPCREfficiency);
-
-        if(m_bStutter){ // only do this if we're using a stutter model
-            /* by PCRing stutter product first ensures that PCR only happens on product
-            previous PCR cycle */
-            stutterAlleleCount += rbinom(stutterAlleleCount, m_dPCREfficiency);
-            double dStutter = rbeta(m_dAlpha, m_dBeta);
-            double dStutter = rbeta(m_dAlpha, m_dBeta);
-            if(pAlleleCount[nLoc][1]>33554432L) // 2^25 somewhat arbitrary use a normal approx.
-              pStutterAlleleCount[nLoc][1]+= rbinomapprox(pAlleleCount[nLoc][1], dStutter);
-            else
-              pStutterAlleleCount[nLoc][1]+= rbinom(pAlleleCount[nLoc][1], dStutter);
-            if(f1!=NULL)
-              *f1 << string64(pStutterAlleleCount[nLoc][1]) << ',' << dStutter << endl;
-          }
-        }
     }
   }
 
-  void Write(ofstream &f1, NumericVector& vAlleleCount, double *pHb, double **pStutterAlleleCount = NULL);
+  void PCR(NumericVector& alleleCount){
+    for(int nCycle = 0; nCycle < m_nNumPCRCycles; nCycle++){
+      alleleCount += rbinom(alleleCount, m_dPCREfficiency);
+    }
+  }
+
+
 public:
   // Default constructor
   /* Default constructor.*/
@@ -168,102 +163,64 @@ public:
     m_bStutter = bStutter;
   }
   // This is where the simulation happens
-  /* This is where the simulation happens.
-  \param nSimulations - number of simulations to carry out*/
-  bool Simulate(){
-    ofstream f1(m_strResFileName.c_str());
-    ofstream f2("pcrresults.csv");
+  List Simulate(){
+    ostringstream Rout;
+    Rout << "Simulation parameters" << endl;
+    Rout << "Number of cells: " << m_nNumCells << endl;
+    Rout << "Extraction efficiency: " << m_dExtractionEfficiency << endl;
+    Rout << "Aliquot: " << m_dAliquot << endl;
+    Rout << "PCR Efficiency: " << m_dPCREfficiency << endl;
+    Rout << "Stutter: " << ( m_bStutter ? "true" : "false") << endl;
 
-    if(f1.is_open())
-    {
+    if(m_bStutter){
+      double dMean = m_dAlpha/(m_dAlpha+m_dBeta);
+      double dVar = m_dAlpha*m_dBeta/((m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta+1));
+      Rout << "Stutter mean: " << dMean << endl;
+      Rout << "Stutter variance: " << dVar << endl;
+    }
+    Rout << "Haploid: " << ( m_bHaploid ? "true" : "false") << endl;
+    Rout << "-----" << endl;
 
-      time_t s = time(NULL);
+    Rprintf("%s", Rout.str().c_str());
 
-      srand(s);
+    NumericVector alleleCount(2 * m_nNumLoci, 0.0);
+    NumericVector stutterAlleleCount(2 * m_nNumLoci, 0.0); //currently assuming back stutter only one repeat
+    NumericVector Hb(m_nNumLoci, 0.0);
 
-      init_generator(rand(),rand());
-      initnorm(rand());
+    List results;
+    results["alleles"] = NumericMatrix::create(m_nNumSims, 2 * m_nNumLoci);
 
-      Rout << "Simulation parameters" << endl;
-      Rout << "Number of cells: " << m_nNumCells << endl;
-      Rout << "Extraction efficiency: " << m_dExtractionEfficiency << endl;
-      Rout << "Aliquot: " << m_dAliquot << endl;
-      Rout << "PCR Efficiency: " << m_dPCREfficiency << endl;
-      Rout << "Stutter: " << ( m_bStutter ? "true" : "false") << endl;
+    if(m_bStutter){
+      results["stutters"] = NumericMatrix(m_nNumSims, 2 * m_nNumLoci);
+    }
+
+    for(int nSim = 0; nSim < m_nNumSims; nSim++){
+      alleleCount = Extract();
 
       if(m_bStutter){
-        double dMean = m_dAlpha/(m_dAlpha+m_dBeta);
-        double dVar = m_dAlpha*m_dBeta/((m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta+1));
-        cout << "Stutter mean: " << dMean << endl;
-        cout << "Stutter variance: " << dVar << endl;
+        PCR(alleleCount, stutterAlleleCount);
+       as<NumericMatrix>(results["alleles"])(nSim,_) = alleleCount;
+       as<NumericMatrix>(results["stutters"])(nSim,_) = stutterAlleleCount;
+      }else{
+        PCR(alleleCount);
       }
-      Rout << "Haploid: " << ( m_bHaploid ? "true" : "false") << endl;
-      Rout << "-----" << endl;
-
-      int nLoc, nSim;
-      NumericVector alleleCount(2 * m_nNumLoci);
-      NumericVector stutterAlleleCount(2 * m_nNumLoci); // currently assuming back stutter only one repeat
-      NumericVector Hb(m_nNumLoci);
-      double dProbDropOut;
-
-
-      for(nSim = 1; nSim <= m_nNumSims; nSim++){
-        alleleCount = Extract();
-
-        if(m_bStutter){
-          PCR(alleleCount, stutterAlleleCount);
-        }else{
-          PCR(alleleCount);
-        }
-
-        //dProbDropOut = CalculateHb(pAlleleCount ,pHb);
-
-        /* if(m_bStutter)
-          Write(f1, pAlleleCount, pHb, pStutterAlleleCount);
-        else
-          Write(f1, pAlleleCount, pHb);
-
-        if(nSim%100==0)
-          cout << nSim << endl;
-        */
-      }
-  }
-
-  double SimulatePCROnly(int n0, const string& strResultsFileName){
-    ofstream f1(strResultsFileName.c_str());
-
-    if(f1.is_open()){
-      int nLoc, nSim;
-      NumericVector vAlleleCount(m_nNumLoci);
-      double *pHb = new double[m_nNumLoci];
-      double dProbDropOut;
-
-      for(nLoc=0;nLoc<m_nNumLoci;nLoc++)
-      {
-        pAlleleCount[nLoc] = new double[2];
-        pAlleleCount[nLoc][0] = n0;
-        pAlleleCount[nLoc][1] = n0;
-      }
-
-      for(nSim=0;nSim<m_nNumSims;nSim++)
-      {
-        PCR(pAlleleCount);
-        CalculateHb(pAlleleCount, pHb);
-        Write(f1, pAlleleCount, pHb);
-      }
-
-      f1.close();
-
-      delete [] pHb;
-
-      for(nLoc=0;nLoc<m_nNumLoci;nLoc++)
-        delete [] pAlleleCount[nLoc];
-      delete [] pAlleleCount;
-
-      return 0;
+      if(nSim % 100 == 0)
+        cout << nSim << endl;
     }
-    return 1;
+
+    return results;
   }
+
+  // List SimulatePCROnly(int n0, const string& strResultsFileName){
+  //   NumericVector alleleCount(2 * m_nNumLoci, 0);
+  //   List results;
+  //
+  //   for(int nSim = 0; nSim < m_nNumSims; nSim++){
+  //     PCR(alleleCount);
+  //    }
+  //
+  //   return results;
+  // }
 };
 
 
