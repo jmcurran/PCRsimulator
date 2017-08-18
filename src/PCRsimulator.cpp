@@ -239,6 +239,7 @@ public:
     Rout << "Stutter: " << ( m_bStutter ? "true" : "false") << endl;
 
     if(m_bStutter){
+      Rout << "alpha: " << m_dAlpha << " " << m_dBeta << endl;
       double dMean = m_dAlpha/(m_dAlpha+m_dBeta);
       double dVar = m_dAlpha*m_dBeta/((m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta)*(m_dAlpha+m_dBeta+1));
       Rout << "Stutter mean: " << dMean << endl;
@@ -262,6 +263,7 @@ public:
 
     for(int nSim = 0; nSim < m_nNumSims; nSim++){
       alleleCount = Extract();
+      // printProf(alleleCount);
 
       if(m_bStutter){
         PCR(alleleCount, stutterAlleleCount);
