@@ -9,6 +9,8 @@ Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
+Depends: Rcpp (>= 0.12.11)
 Imports: Rcpp (>= 0.12.11)
 LinkingTo: Rcpp
 RcppModules: PCRSim
+RoxygenNote: 6.0.1

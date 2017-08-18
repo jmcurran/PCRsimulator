@@ -14,23 +14,22 @@ private:
   int m_nNumCells;
   // Number of PCR cycles. By default we use 28 cycles.
   int m_nNumPCRCycles;
-  // Number of simulations to run
-  int m_nNumSims;
-  // Efficiency of the extraction process. Constrained to be between zero and one.
+   // Efficiency of the extraction process. Constrained to be between zero and one.
   double m_dExtractionEfficiency;
   // Efficiency of the PCR process. Constrained to be between zero and one.
   double m_dPCREfficiency;
   // Proportion of an aliquot that contains m_nNumCells that is taken forward to PCR.
   // Constrained to be between zero and one.
   double m_dAliquot;
-  // Probability of an allele stuttering on a given PCR cycle.
-  double m_dStutter;
   // Is this a haploid case? false by default.
   bool m_bHaploid;
   // Are we employing a stutter model? false by default.
   bool m_bStutter;
   double m_dAlpha;
   double m_dBeta;
+public:
+  // Number of simulations to run
+  int m_nNumSims;
 
 private:
   NumericVector rbinom(const int n, const double size, const double p){
@@ -127,6 +126,16 @@ private:
     }
   }
 
+  void printProf(const NumericVector& alleleCount){
+    ostringstream oss;
+
+    for(int n = 0; n < m_nNumLoci; n++){
+      oss << n + 1 << ":" << alleleCount[2 * n] << " " << alleleCount[2 * n + 1] << endl;
+    }
+
+    Rprintf("%s\n", oss.str().c_str());
+  }
+
 
 public:
   // Default constructor
@@ -142,34 +151,90 @@ public:
     m_bHaploid = false;
     m_bStutter = false;
   }
-  // Standard Constructor
-  /* Standard Constructor
-  \param nNumCells - the number of cells to be analysed in this case
-  \param nNumAlleles - the number of alleles in the system
-  \param dPCREfficiency - the efficiency ofthe PCR process
-  \param dAliquot - the proportion of an aliquot that contains m_nNumCells that is taken forward to PCR
-  \param nNumPCRCycles - the number of PCRCycles
-  \param bStutter - are we using a stutter model.
-  \param bHaploid - is this a haploid case?.*/
-  PCRSim(int nNumCells, int nNumLoci, double dExtractionEfficiency, double dPCREfficiency, double dAliquot,
-         double dStutter, int nNumPCRCycles = 28, bool bStutter = false, bool bHaploid = false){
-    m_nNumCells = nNumCells;
-    m_nNumLoci = nNumLoci;
-    m_dExtractionEfficiency = dExtractionEfficiency;
-    m_dPCREfficiency = dPCREfficiency;
+
+  //  Properties
+  double getAliquotPpn(void){
+    return m_dAliquot;
+  }
+
+  void setAliquotPpn(double dAliquot){
     m_dAliquot = dAliquot;
-    m_dStutter = dStutter;
-    m_nNumPCRCycles = nNumPCRCycles;
+  }
+
+  NumericVector getAlpha(void){
+    return NumericVector::create(m_dAlpha, m_dBeta);
+  }
+
+  void setAlpha(const NumericVector& alpha){
+    m_dAlpha = alpha[0];
+    m_dBeta = alpha[1];
+  }
+
+  double getExtractionEfficiency(void){
+    return m_dExtractionEfficiency;
+  }
+
+  void setExtractionEfficiency(double dExtractionEfficiency){
+    m_dExtractionEfficiency = dExtractionEfficiency;
+  }
+
+  bool getHaploid(void){
+    return m_bHaploid;
+  }
+
+  void setHaploid(bool bHaploid){
     m_bHaploid = bHaploid;
+  }
+
+  int getNumCells(void){
+    return m_nNumCells;
+  }
+
+  void setNumCells(int numCells){
+    m_nNumCells = numCells;
+  }
+
+  int getNumLoci(void){
+    return m_nNumLoci;
+  }
+
+  void setNumLoci(int numLoci){
+    m_nNumLoci = numLoci;
+  }
+
+  int getNumPCRCycles(void){
+    return m_nNumPCRCycles;
+  }
+
+  void setNumPCRCycles(int nNumPCRCycles){
+    m_nNumPCRCycles = nNumPCRCycles;
+  }
+
+  double getPCREfficiency(void){
+    return m_dPCREfficiency;
+  }
+
+  void setPCREfficiency(double dPCREfficiency){
+    m_dPCREfficiency = dPCREfficiency;
+  }
+
+  bool getStutter(void){
+    return m_bStutter;
+  }
+
+  void setStutter(bool bStutter){
     m_bStutter = bStutter;
   }
-  // This is where the simulation happens
-  List simulate(){
+
+  void print(void){
     ostringstream Rout;
     Rout << "Simulation parameters" << endl;
+    Rout << "----------------------------" << endl;
     Rout << "Number of cells: " << m_nNumCells << endl;
     Rout << "Extraction efficiency: " << m_dExtractionEfficiency << endl;
     Rout << "Aliquot: " << m_dAliquot << endl;
+    Rout << "Number of loci: " << m_nNumLoci << endl;
+    Rout << "Number of PCR cycles: " << m_nNumPCRCycles << endl;
     Rout << "PCR Efficiency: " << m_dPCREfficiency << endl;
     Rout << "Stutter: " << ( m_bStutter ? "true" : "false") << endl;
 
@@ -183,31 +248,39 @@ public:
     Rout << "-----" << endl;
 
     Rprintf("%s", Rout.str().c_str());
+  }
 
+  // This is where the simulation happens
+  List simulate(void){
     NumericVector alleleCount(2 * m_nNumLoci, 0.0);
     NumericVector stutterAlleleCount(2 * m_nNumLoci, 0.0); //currently assuming back stutter only one repeat
     NumericVector Hb(m_nNumLoci, 0.0);
 
     List results;
-    results["alleles"] = NumericMatrix::create(m_nNumSims, 2 * m_nNumLoci);
-
-    if(m_bStutter){
-      results["stutters"] = NumericMatrix(m_nNumSims, 2 * m_nNumLoci);
-    }
+    NumericMatrix Alleles(m_nNumSims, 2 * m_nNumLoci);
+    NumericMatrix Stutters(m_nNumSims, 2 * m_nNumLoci);
 
     for(int nSim = 0; nSim < m_nNumSims; nSim++){
       alleleCount = Extract();
 
       if(m_bStutter){
         PCR(alleleCount, stutterAlleleCount);
-       as<NumericMatrix>(results["alleles"])(nSim,_) = alleleCount;
-       as<NumericMatrix>(results["stutters"])(nSim,_) = stutterAlleleCount;
+        Alleles(nSim,_) = alleleCount;
+        Stutters(nSim,_) = stutterAlleleCount;
       }else{
         PCR(alleleCount);
+        Alleles(nSim,_) = alleleCount;
       }
       if(nSim % 100 == 0)
         cout << nSim << endl;
     }
+
+    results["alleles"] = Alleles;
+
+    if(m_bStutter){
+      results["stutters"] = Stutters;
+    }
+
 
     return results;
   }
@@ -231,8 +304,22 @@ RCPP_MODULE(PCRSim) {
 
   class_<PCRSim>( "PCRSim")
     .default_constructor("Default constructor") // This exposes the default constructor
-    .constructor<PCRSim>("Constructor with an argument") // This exposes the other constructor
-    .method("Simulate", &PCRSim::simulate) // This exposes the simulate method
+
+    .field( "numSims", &PCRSim::m_nNumSims) // number of simulations
+
+    .method("getAlpha", &PCRSim::getAlpha)
+    .method("setAlpha", &PCRSim::setAlpha)
+    .method("print", &PCRSim::print) // this exposes the print method
+    .method("simulate", &PCRSim::simulate) // This exposes the simulate method
+
+    .property("aliqot", &PCRSim::getAliquotPpn, &PCRSim::setAliquotPpn)
+    .property("extract", &PCRSim::getExtractionEfficiency, &PCRSim::setExtractionEfficiency)
+    .property("haploid", &PCRSim::getHaploid, &PCRSim::setHaploid)
+    .property("numCells", &PCRSim::getNumCells, &PCRSim::setNumCells)
+    .property("numLoci", &PCRSim::getNumLoci, &PCRSim::setNumLoci)
+    .property("numCycles", &PCRSim::getNumPCRCycles, &PCRSim::setNumPCRCycles)
+    .property("PCReff", &PCRSim::getPCREfficiency, &PCRSim::setPCREfficiency)
+    .property("stutter", &PCRSim::getStutter, &PCRSim::setStutter)
   ;
 }
 
