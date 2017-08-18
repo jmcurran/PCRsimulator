@@ -273,8 +273,6 @@ public:
         PCR(alleleCount);
         Alleles(nSim,_) = alleleCount;
       }
-      if(nSim % 100 == 0)
-        cout << nSim << endl;
     }
 
     results["alleles"] = Alleles;
